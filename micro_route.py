@@ -517,7 +517,6 @@ class MICRO_ROUTE ():
             float  : 接受正浮点数,包括整数 例如: 12.5 20
             path   : 包含 string int float 使用path变量后面的所有变量会作废,例如 /<path:p>/<int:n>/ , 此时 n 作废
             custom : 自定义ure解析式,例如: @app.route ("/api/<custom="(.*)":var>/") 请谨慎使用此类型,可能会造成服务器的崩溃
-            uuid   : 接受 UUID 字符串 (暂不支持)
             
 
         Example:
