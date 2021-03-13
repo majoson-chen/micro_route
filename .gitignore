@@ -129,7 +129,6 @@ dmypy.json
 .vscode/
 .idea/
 www/
-micro_route.mpy
 boot.py
 test.py
 

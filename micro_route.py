@@ -672,19 +672,6 @@ class MICRO_ROUTE ():
                 except Exception as e:
                     debug_info (4,"Accept request faild: ", e)
         
-        
-        
-        try:
-            client, addr = sock.accept ()
-            debug_info (3,"====Accepted a new request :", addr, " ====")
-
-            if self.__muti_thread:
-                # 启用多线程
-                ...
-
-        except Exception as e:
-            debug_info (4,"Accept request faild: ", e)
-            return
 
     def __process_handler (self,client:socket.socket,addr:tuple):
         """
