@@ -1,9 +1,9 @@
 # micro_route
-简体中文 | [English](https://micro_route.m-jay.cn/docs/en/)
+简体中文 | [English](https://micro-route.m-jay.cn/docs/en/)
 
-[项目官网 | Project website](https://micro_route.m-jay.cn/)
+[项目官网 | Project website](https://micro-route.m-jay.cn/)
 
-[开发文档 | Document](https://micro_route.m-jay.cn/docs/)
+[开发文档 | Document](https://micro-route.m-jay.cn/docs/)
 
 ## I need help
 
