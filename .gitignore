@@ -123,3 +123,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# custom
+.mpyproject.json
+.vscode/
+www/
+boot.py
+test.py
+
