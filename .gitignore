@@ -127,7 +127,9 @@ dmypy.json
 # custom
 .mpyproject.json
 .vscode/
+.idea/
 www/
+micro_route.mpy
 boot.py
 test.py
 
