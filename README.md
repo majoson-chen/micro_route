@@ -5,6 +5,8 @@
 
 [开发文档 | Document](https://micro-route.m-jay.cn/docs/)
 
+![](./resources/micro-route-poster.jpg)
+
 ## I need help
 
 I am not expert at English, so i need someone who is good at English helping me to translate the document into English.

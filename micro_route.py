@@ -118,7 +118,7 @@ _TEMPLATE_HTTPRESP:str = micropython.const ("""\
 {content}\
 """)
 
-VERSION:str = micropython.const ('v0.0.1 aplha')
+VERSION:str = micropython.const ('v0.1.1 aplha')
 
 __REGXP_TYPE_STRING = micropython.const("([^\d][^/|.]*)")
 __REGXP_TYPE_INT = micropython.const("(\d*)")
@@ -126,10 +126,6 @@ __REGXP_TYPE_FLOAT = micropython.const("(\d*\.?\d*)")
 __REGXP_TYPE_PATH = micropython.const("(.*)")
 __REGXP_AGREEMENT = micropython.const("(GET|POST|HEAD|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH) (.*) (.*)")
 __REGXP_VAR_VERI = micropython.const("<(string|int|float|custom=.*):(\w+)>") # 匹配URL的规则是否为变量
-# __comper_type_string = re.compile (__REGXP_TYPE_STRING)
-# __comper_type_int = re.compile (__REGXP_TYPE_INT)
-# __comper_type_float = re.compile (__REGXP_TYPE_FLOAT)
-# __comper_type_path = re.compile (__REGXP_TYPE_PATH)
 __comper_var_veri = re.compile (__REGXP_VAR_VERI)
 __comper_agreement = re.compile (__REGXP_AGREEMENT)
 # ===================CONSTS===================
@@ -144,18 +140,18 @@ def debug_info (level:int,*args):
     """
     if level <= DEBUG: print (*args)
 
-def make_path (str_l:list) -> str:
+def make_path (paths:list) -> str:
     """
     把一个str的list合并在一起,并用 '/' 分割
     -> ['api','goods']
-    <- "/api/goods/"
+    <- "/api/goods"
     """
-    if str_l == []:
+    if paths == []:
         return '/'
 
     s = ''
 
-    for i in str_l:
+    for i in paths:
         if i == '': 
             continue # 过滤空项
         s += "/"
@@ -177,12 +173,56 @@ def parse_url (url:str) -> str:
         规范化 URL
     
     -> hello/world
-    <- /hello/world/
+    <- /hello/world
     """
     if url == "": url = "/"
     if not url.startswith ('/'): url = "/" + url # 添加开头斜杠
     # if not url.endswith ("/"): url += "/" # 添加末尾斜杠
     return url
+
+def escape_chars (string:str) -> str:
+    """
+    将转化过的html还原
+    @param string: 可以是一个 str, 也可以是一个 list[str]
+    @return 输入 str 类型返回 str 类型 , 输入 list 类型返回 list 
+    例如:
+    escape_chars ("hello&nbspworld") -> "hello world"
+    """
+
+    if type (string) == str:
+        for k, v in _HTML_ESCAPE_CHARS.items ():
+            string = string.replace (k,v)
+    elif type (string) == list:
+        for k, v in _HTML_ESCAPE_CHARS.items ():
+            for idx in range(len(string)):
+                string [idx] = string [idx].replace (k,v)
+    return string
+
+def load_form_data (data:str):
+    """
+    传入一个bytes或者str,将其解析成Python的dict对象,用于解析HTML的表单数据
+    例如:
+    load_form_data ("user_name=abc&user_passwd=123456")
+    -> {
+        "user_name"   : "abc",
+        "user_passwd" : "123456"
+    }
+    """
+    if type (data) == bytes:
+        data = data.decode (charset)
+
+    obj = {}
+    data:list = data.split ("&")
+
+    if not data == ['']: # data 有数据时再进行解析
+        data = escape_chars (data)
+        for line in data:
+            idx = line.find ("=")
+            # arg_name  : line [:idx]
+            # arg_value : line [idx+1:]
+            obj [line [:idx]] = line [idx+1:]
+    return obj
+
 # =============Helper functions===============
 # --------------------------------------------
 class __Request ():
@@ -193,11 +233,11 @@ class __Request ():
     url:str          = "" # 请求的URL
     http_version:str = "" # 报文的HTTP协议版本
     headers:dict     = {} # HTTP报文的 Headers
-    args:tuple       # URL中的参数
     addr:tuple       # 请求的TCP地址 (ip,port)
     form:dict        = {} # method = post 时可用
     args:dict        = {}
     data:bytes       = b""
+    client:socket.socket
     def __init__ (self,sock:socket.socket,addr:tuple,head:str,headers:str,content:str=None):
         #head => ('GET','/',"HTTP/1.1")
         self.method ,  self.url , self.http_version = head
@@ -207,7 +247,9 @@ class __Request ():
 
         if "?" in self.url:
             # 解析参数
-            self.args = self.dump_form_data (self.url[self.url.find ("?")+1:])
+            idx = self.url.find ("?")
+            self.args = load_form_data (self.url[idx+1:])
+            self.url = self.url[:idx]
             
     def recv_data (self,bufsize:int=4096) -> bytes:
         """
@@ -215,51 +257,10 @@ class __Request ():
         这些数据的大小可能会超出芯片内存的限制, 所以程序默认不读取请求的数据.
         可以调用本对象的 dump_data() 把表单或者 json 数据转换为 python 数据并返回.
         """
+        self.client.recv_into ()
         return self.client.recv (bufsize)
     
-    @staticmethod
-    def escape_chars (string:str) -> str:
-        """
-        将转化过的html还原
-        @param string: 可以是一个 str, 也可以是一个 list[str]
-        @return 输入 str 类型返回 str 类型 , 输入 list 类型返回 list 
-        例如:
-        escape_chars ("hello&nbspworld") -> "hello world"
-        """
-
-        if type (string) == str:
-            for k, v in _HTML_ESCAPE_CHARS.items ():
-                string = string.replace (k,v)
-        elif type (string) == list:
-            for k, v in _HTML_ESCAPE_CHARS.items ():
-                for idx in range(len(string)):
-                    string [idx] = string [idx].replace (k,v)
-        return string
-
-    def dump_form_data (self,data:str):
-        """
-        传入一个bytes或者str,将其解析成Python的dict对象,用于解析HTML的表单数据
-        例如:
-        dump_form_data ("user_name=abc&user_passwd=123456")
-        -> {
-            "user_name"   : "abc",
-            "user_passwd" : "123456"
-        }
-        """
-        if type (data) == bytes:
-            data = data.decode (charset)
-
-        obj = {}
-        data:list = data.split ("&")
-
-        if not data == ['']: # data 有数据时再进行解析
-            data = self.escape_chars (data)
-            for line in data:
-                idx = line.find ("=")
-                # arg_name  : line [:idx]
-                # arg_value : line [idx+1:]
-                obj [line [:idx]] = line [idx+1:]
-        return obj
+    # TODO: recv_data_into
 
 class __SESSION ():
     """
@@ -300,7 +301,6 @@ class __Response ():
         return s
 
     def send_header (self,
-        statu_code:str = "200",
         statu_explane:str = None,
         content:str = ""
     ):
@@ -312,7 +312,7 @@ class __Response ():
                 "Content-Type" : "text/plain"
             })
         """
-        self.statu_code = statu_code
+
         if statu_explane: self.statu_explane = statu_explane
         else: self.statu_explane = STATU_CODES.get (self.statu_code,"")
         
@@ -359,7 +359,8 @@ class __Response ():
         """
 
         self.headers ["Location"] = location
-        self.send_header (statu_code)
+        self.statu_code = statu_code
+        self.send_header ()
         self._responsed = True
         self.close ()
 
@@ -377,7 +378,8 @@ class __Response ():
         中断请求, 发送一个 statu code 后关闭连接
         """
         if content: self.headers["Content-Length"] = len (content)
-        self.send_header (statu_code=statu_code,statu_explane=statu_explane,content=content)
+        self.statu_code = statu_code
+        self.send_header (statu_explane=statu_explane,content=content)
         self._responsed = True
         self.close ()
 
@@ -672,7 +674,6 @@ class MICRO_ROUTE ():
                 except Exception as e:
                     debug_info (4,"Accept request faild: ", e)
         
-
     def __process_handler (self,client:socket.socket,addr:tuple):
         """
         处理请求的函数
@@ -721,7 +722,8 @@ class MICRO_ROUTE ():
                 context.request.data = context.request.recv_data ()
                 # 尝试解析数据
                 debug_info (4, "try to load the data to form obj.")
-                if "application/x-www-form" in context.request.headers ["Content-Type"]:
+                content_type = context.request.headers["Content-Type"]
+                if content_type in ("application/x-www-form-urlencoded", "multipart/form-data"):
                     context.request.form = context.request.dump_form_data (context.request.data.decode (charset))
                 elif "application/json" in context.request.headers ["Content-Type"]:
                     context.request.form = json.loads (context.request.data.decode (charset))
