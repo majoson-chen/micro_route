@@ -578,8 +578,8 @@ class MICRO_ROUTE ():
             # ------------------------------------
             # 添加到路由
             # "^" + make_path(l_rule) + "/?\??" : 强制匹配开头结尾
-            self.append_to_route_tree ("^" + make_path(l_rule) + "/?\??",func,method,url_vars,auto_recv)
-            
+
+            self.append_to_route_tree ("^" + make_path(l_rule) + "/?(\?.*)?$",func,method,url_vars,auto_recv)
             gc.collect ()
             return func
         return decorater

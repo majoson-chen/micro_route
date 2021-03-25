@@ -11,37 +11,7 @@ app = micro_route.MICRO_ROUTE ()
 
 @app.route ("/")
 def index (context:micro_route.Context):
-    return """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Welcome</title>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            padding: 0;
-            margin: 0
-        }
-        h1 {
-            font-size: 32px;
-        }
-        p {
-            font-size: 24px;
-        }
-    </style>
-</head>
-<body>
-    <div>
-        <h1>Welcome to micro_route</h1>
-        <p>Start a pleasant development journey!</p>
-    </div>
-</body>
-</html>
-"""
+    context.response.redirect ("/index.html")
 
 
 micro_route.debug_info (1,'run app')

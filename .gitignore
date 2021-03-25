@@ -131,4 +131,8 @@ dmypy.json
 www/
 boot.py
 test.py
-
+main.py
+resources/index.html
+resources/style.css
+resources/micro-route-poster.psd
+resources/.vscode
