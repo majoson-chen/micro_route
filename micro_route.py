@@ -62,6 +62,10 @@ import           gc, micropython, os
 
 # ++++++++++++++++++++++++++++++++++++++++++++
 # ===================CONSTS===================
+DEFAULT_PAGES = micropython.const ([
+    "index.html",
+    "index.htm"
+])
 charset = micropython.const ("utf-8")
 DEBUG = micropython.const(1)
 _HTML_ESCAPE_CHARS = micropython.const({
@@ -136,7 +140,7 @@ __comper_agreement = re.compile (__REGXP_AGREEMENT)
 def debug_info (level:int,*args):
     """
     如果处于调试状态,打印相应的调试信息
-    @param level: 0=crash 1=error 2=warn 3=info 4=debug
+    :param level: 0=crash 1=error 2=warn 3=info 4=debug
     """
     if level <= DEBUG: print (*args)
 
@@ -183,8 +187,8 @@ def parse_url (url:str) -> str:
 def escape_chars (string:str) -> str:
     """
     将转化过的html还原
-    @param string: 可以是一个 str, 也可以是一个 list[str]
-    @return 输入 str 类型返回 str 类型 , 输入 list 类型返回 list 
+    :param string: 可以是一个 str, 也可以是一个 list[str]
+    :return 输入 str 类型返回 str 类型 , 输入 list 类型返回 list 
     例如:
     escape_chars ("hello&nbspworld") -> "hello world"
     """
@@ -223,6 +227,47 @@ def load_form_data (data:str):
             obj [line [:idx]] = line [idx+1:]
     return obj
 
+def _translate_rule (rule:str) -> tuple:
+    """
+    将一个普通的路由字符串转化成正则表达式路由
+    :param rule: 欲转化的规则文本
+    :return (rule:str, url_vars:list)
+    例子:
+    => '/'
+    <= ('^//?(\\?.*)?$', [])
+    """
+    rule = split_url(parse_url (rule))  
+    url_vars:list = [] # 存放变量名称
+
+    for i in rule: # 对其进行解析
+        m = __comper_var_veri.match (i)
+        # m.group (1) -> string | float ...
+        # m.group (2) -> var_name
+        if m:
+            # 如果匹配到了,说明这是一个变量参数
+            var_type = m.group (1)
+            if var_type == "string": 
+                # l_rule.index (i) 获取 i 在 l_rule 中的下标
+                rule[rule.index (i)] = __REGXP_TYPE_STRING
+                url_vars.append ((m.group (2),))
+            elif var_type == "float":
+                rule[rule.index (i)] = __REGXP_TYPE_FLOAT
+                url_vars.append ((m.group (2),float))
+            elif var_type == "int":
+                rule[rule.index (i)] = __REGXP_TYPE_INT
+                url_vars.append ((m.group (2),int))
+            elif var_type == "path":
+                rule[rule.index (i)] = __REGXP_TYPE_PATH
+                url_vars.append ((m.group (2),))
+            elif var_type.startswith("custom="):
+                rule[rule.index (i)] = m.group (1)[7:]
+                url_vars.append ((m.group (2),))
+            else:
+                raise TypeError ("Cannot resolving this variable: {0}".format (i))
+    
+    rule = "^" + make_path(rule) + "/?(\?.*)?$"
+    
+    return (rule,url_vars)
 # =============Helper functions===============
 # --------------------------------------------
 class __Request ():
@@ -353,8 +398,8 @@ class __Response ():
     def redirect (self,location:str,statu_code:str="302"):
         """
         将请求重定向到另一个地址
-        @param location   : 欲重定向的地址.
-        @param statu_code : http 状态码 , 302:临时定向 301:永久定向
+        :param location   : 欲重定向的地址.
+        :param statu_code : http 状态码 , 302:临时定向 301:永久定向
         例子: response.redirect ('https://www.baidu.com/') 重定向至百度
         """
 
@@ -386,17 +431,17 @@ class __Response ():
     def send_file (self,path:str) -> bool:
         """
         传入url,发送本地的静态文件
-        @param path: 文件位于Flash中的绝对路径
+        :param path: 文件位于Flash中的绝对路径
         成功返回True
         失败返回False
         """
         try:
+            file = os.stat (path)
+            if file [0] == 16384: # 如果是文件夹,放弃
+                return False
+            file_size = file[6]
             #没报错就是找到文件了
-            # if url == "" or url == "/":
-            #     return False
-
-            file_size = os.stat (path)[6]
-            debug_info (4, "found static file.")
+            debug_info (4, "found static file: ", path)
             suffix = path[path.rfind ('.'):]
             # 设定文档类型
             self.mime_type = MIME_TYPES_MAP.get (suffix.lower (),"application/octet-stream")
@@ -416,11 +461,13 @@ class __Response ():
                         if not self.client.write (buf):
                             return False
                         file_size -= x
+                    debug_info (3, "send static file succeed.")
                     return True
-                except :
+                except:
+                    debug_info (3, "send static file faild")
                     return False
         except: # 报错说明没找到
-            debug_info (4, "not found static file.")
+            debug_info (4, "not found static file: ", path)
             self.abort (404)
             return False
 
@@ -439,6 +486,7 @@ class MICRO_ROUTE ():
     root_path:str
     __SOCK:socket.socket
     __routes:list = []
+    
     # __routes = [
     #     {
     #         "rule"      : '/api/goods/([^\d][^/|.]*)/(\d*)/'
@@ -460,9 +508,9 @@ class MICRO_ROUTE ():
     ):
         """
         实例化一个micro_route, 然后开始你的嵌入式编程之旅.
-        @param bind_ip   : 绑定的IP,默认为 "0.0.0.0",
-        @param bind_port : 绑定的端口,默认为 80
-        @param root_path : 静态文件的存放路径,默认为 '/www'
+        :param bind_ip   : 绑定的IP,默认为 "0.0.0.0",
+        :param bind_port : 绑定的端口,默认为 80
+        :param root_path : 静态文件的存放路径,默认为 '/www'
         """
         self.bind_ip = bind_ip
         self.bind_port = bind_port
@@ -471,30 +519,19 @@ class MICRO_ROUTE ():
         # 清除结尾的 /
         if root_path.endswith ("/"): root_path = root_path [:-1]
         self.root_path = root_path.replace ('../', '/')
-        
-    def append_to_route_tree (self,rule:str,func:object,method:str,var_l:list,auto_recv:bool):
+
+    def append_to_route_tree (self,rule:str,func:object,method:str,auto_recv:bool):
         """
         添加到路由解析树中
         """
-        # @app.route ("/api/goods/<string:goods_name>/<int:gid>/")
-        # def api (goods_name:str,gid:int):
-        #     ...
-        #                      
-        # __routes = [
-        #     {
-        #         "rule"      : "/api/goods/([^\d][^/|.]*)/"(\d*)"/"
-        #         "func"      : function ()
-        #         "method"    : "GET"
-        #         "URL_VARS"  : ['goods_name','gid']
-        #     },
-        #     ...
-        # ]
-        debug_info (4,"append a route: " , 
+        rule , url_vars = _translate_rule (rule)
+        
+        debug_info (4,"append a route: " ,
             {
                 "rule"      : rule,
                 "func"      : func,
                 "method"    : method,
-                "url_vars"  : var_l,
+                "url_vars"  : url_vars,
                 "auto_recv" : auto_recv
             }
         )
@@ -502,15 +539,16 @@ class MICRO_ROUTE ():
             "rule"      : rule,
             "func"      : func,
             "method"    : method,
-            "url_vars"  : var_l,
+            "url_vars"  : url_vars,
             "auto_recv" : auto_recv
         })
+        gc.collect ()
 
     def route (self,rule:str='/',method:str="GET",auto_recv:bool=True):
         """
-        @param rule      : 响应的URL,支持变量方式定义,必须以 `/` 开头
-        @param method    : 响应的方式 GET | POST ...
-        @param auto_recv : 仅在 method 为 POST 或者 PUT 时可用\
+        :param rule      : 响应的URL,支持变量方式定义,必须以 `/` 开头
+        :param method    : 响应的方式 GET | POST ...
+        :param auto_recv : 仅在 method 为 POST 或者 PUT 时可用\
             由于传输的数据可能过大,可以控制程序是否自动解析客户端发送的数据
             若为 False, 可以使用 context.request.recv_data () 
             手动获取用户发送的数据.
@@ -539,48 +577,9 @@ class MICRO_ROUTE ():
         def index ():
             return 'hello world'
         """
-        
         def decorater (func):
-            
-            # ++++++++++++++++++++++++++++++++++++
-            # ==============解析url===============
-            l_rule = split_url(parse_url (rule))  
-            url_vars:list = [] # 存放变量名称
-
-            for i in l_rule: # 对其进行解析
-                m = __comper_var_veri.match (i)
-                # m.group (1) -> string | float ...
-                # m.group (2) -> var_name
-                if m:
-                    # 如果匹配到了,说明这是一个变量参数
-                    var_type = m.group (1)
-                    if var_type == "string": 
-                        # l_rule.index (i) 获取 i 在 l_rule 中的下标
-                        l_rule[l_rule.index (i)] = __REGXP_TYPE_STRING
-                        url_vars.append ((m.group (2),))
-                    elif var_type == "float":
-                        l_rule[l_rule.index (i)] = __REGXP_TYPE_FLOAT
-                        url_vars.append ((m.group (2),float))
-                    elif var_type == "int":
-                        l_rule[l_rule.index (i)] = __REGXP_TYPE_INT
-                        url_vars.append ((m.group (2),int))
-                    elif var_type == "path":
-                        l_rule[l_rule.index (i)] = __REGXP_TYPE_PATH
-                        url_vars.append ((m.group (2),))
-                    elif var_type.startswith("custom="):
-                        l_rule[l_rule.index (i)] = m.group (1)[7:]
-                        url_vars.append ((m.group (2),))
-                    else:
-                        raise TypeError ("Cannot resolving this variable: {0}".format (i))
-                    
-            
-            # ==============解析url===============
-            # ------------------------------------
-            # 添加到路由
             # "^" + make_path(l_rule) + "/?\??" : 强制匹配开头结尾
-
-            self.append_to_route_tree ("^" + make_path(l_rule) + "/?(\?.*)?$",func,method,url_vars,auto_recv)
-            gc.collect ()
+            self.append_to_route_tree (rule,func,method,auto_recv)
             return func
         return decorater
 
@@ -748,14 +747,20 @@ class MICRO_ROUTE ():
             # 没有处理函数, 尝试寻找本地文件
             debug_info (3,"rule not hit")
             if context.request.url == "" or context.request.url == "/":
-                context.response.abort (404) # Not Found
-                debug_info (3, "index page not found.")
-            if context.response.send_file (self.root_path + context.request.url):
-                debug_info (3, "send static file succeed.")
+                debug_info (3, "try to send default index page.")
+                for file_name in DEFAULT_PAGES:
+                    # 发送默认页文件
+                    try:
+                        os.stat (self.root_path + '/' + file_name)
+                        # 没报错说明有文件
+                        context.response.send_file (self.root_path + '/' + file_name)
+                        break
+                    except: ...
+                 
             else:
-                debug_info (3, "send static file faild")
-            
-        
+                context.response.send_file (self.root_path + context.request.url)
+                
+
         context.response.close () # 关闭连接
         gc.collect ()
         debug_info (4,"------responsed------")
@@ -767,11 +772,11 @@ class MICRO_ROUTE ():
         muti_thread:bool = False
     ):
         """
-        @param timeout: 等待超时的时间
-        @param backlog: 最多同时连接的TCP数量
-        @param blocked: 是否阻塞线程,设置为True之后除非发生错误或者用户手动中断,此函数将一直不返回
-        @param muti_thread: 是否启用多线程
-        @return: None
+        :param timeout: 等待超时的时间
+        :param backlog: 最多同时连接的TCP数量
+        :param blocked: 是否阻塞线程,设置为True之后除非发生错误或者用户手动中断,此函数将一直不返回
+        :param muti_thread: 是否启用多线程
+        :return: None
         启动WEB服务器.
         可以指定是否阻塞模式.
         """
