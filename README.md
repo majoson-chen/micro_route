@@ -7,6 +7,13 @@
 
 ![](./resources/micro-route-poster.jpg)
 
+## Notice!
+This framework has been deprecated and will be replaced by a new project.
+The new project is [micropython-urouter](https://github.com/Li-Lian1069/micropython-urouter)
+
+## 注意!
+本框架目前已经被废弃，将由新的项目代替 [micropython-urouter](https://github.com/Li-Lian1069/micropython-urouter)
+
 ## I need help
 
 I am not expert at English, so i need someone who is good at English helping me to translate the document into English.
